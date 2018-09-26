@@ -1,0 +1,25 @@
+' ActiveBasic Project file.
+
+#VERSION=9
+
+#MODULETYPE=0
+
+#NAME=FT_GBADumper
+
+#PLATFORM=32
+
+#USEWINDOW=0
+
+#OPTION=&H00010000
+
+#OUTPUT_RELEASE=.\FT-GBADumper.exe
+
+#OUTPUT_DEBUG=.\FT-GBADumper_debug.exe
+
+#RESOURCE=0
+
+#SOURCE
+GBADumper.abp
+ROM_Class_GBA.sbp
+..\FT232HLib_debug.sbp
+..\MCP23017_Lib.sbp

@@ -1,0 +1,93 @@
+/* FT232HL GBA Dumper
+ * 	Programmed by RGBA_CRT 2018 09
+ * 
+ * GAMEBOY A0-A15 ::: GBA D0-D15
+ * GAMEBOY D0-D7  ::: GBA A16-A23
+ *        
+ * W I P Ç» ÇÃ Ç≈ Ç‹ ÇæÉR Å[ Éh Ç™ âò Ç¢
+ */
+
+'AB-FT232HLib
+#include "..\D2XX.sbp"
+#include "..\MCP23017_Lib.sbp"
+#include "..\FT232HLib_debug.sbp"
+'RGBALib
+#include <RGBALib.sbp>
+#include "ROM_Class_GBA.sbp"
+#console
+
+Const FT_COMMAND_BUFFER_SIZE = 1024*1024*5
+
+Print "FT232H-GBAdvance-Dumper WIP      RGBA_CRT 2018"
+
+'Open FT232H
+Dim ft AS *FT232H
+ft=new FT232H(FT_COMMAND_BUFFER_SIZE)
+
+if ft->listupDeviceToConsole()=FALSE Then Input "[PRESS ENTER]",ft:End
+
+Dim ftID As DWord
+if ft->getNumberOfDevice() > 1 Then input "Select device >",ftID
+
+if ft->openDevice(ftID)=FALSE Then Print "OpenError" : End
+printf(ex"device #%02d online.\n\n",ftID)
+
+Dim buf[512] AS Byte
+
+
+
+Dim fe AS *FT232H_GBA_ROM
+fe=New FT232H_GBA_ROM()
+fe->init(ft)
+fe->FT_SendCommands()
+
+fe->AreaReadRequest(0,512)
+fe->FT_SendCommands()
+fe->FT_ReceiveData(buf,512)
+Dump(buf+&HA0,32,&HA0)
+Print
+
+Dim header AS GBA_ROM_HEADER
+memcpy(VarPtr(header),buf,sizeof(GBA_ROM_HEADER))
+
+printf(ex"GBA ROM INFO:\n Title: %s\n GameCode: %s\n MakerCode: %c%c\n\n",header.Title,Dw2Str(GetDWord(VarPtr(header.GameCode))),header.MakerCode[0],header.MakerCode[1])
+ft->flush()
+
+Const GBAD_BUFFER_SIZE=1024*20
+Dim rxbuf AS BytePtr
+rxbuf=calloc(GBAD_BUFFER_SIZE)
+
+Dim i AS DWord, lt AS DWord
+Dim out AS File
+out.openFile(MakeStr(header.Title)+".test.gba",GENERIC_WRITE)
+lt = GetTickCount()
+
+Do
+
+	fe->AreaReadRequest(i*GBAD_BUFFER_SIZE,GBAD_BUFFER_SIZE)
+	fe->FT_SendCommands()
+	fe->FT_ReceiveData(rxbuf,GBAD_BUFFER_SIZE)
+
+	out.write(rxbuf,GBAD_BUFFER_SIZE)
+	i++
+
+	printf(ex"[DumpROM] ReadTotal %dKB %dMB ::: Time:%ds %dkb/s         \r",GBAD_BUFFER_SIZE*i/1024,GBAD_BUFFER_SIZE*i/(1024*1024), (GetTickCount()-lt)/1024,((i*GBAD_BUFFER_SIZE)/(GetTickCount()-lt)) As DWord)
+
+Loop
+debug
+
+'https://problemkaputt.de/gbatek.htm#gbacartridgeheader
+Type GBA_ROM_HEADER
+	EntryPoint AS DWord
+	NLogo[155] AS Byte
+	Title[11] AS Byte
+	GameCode[3] AS Byte
+	MakerCode[1] AS Byte
+	Fixed1 AS Byte
+	MainUnitCode AS Byte
+	DeviceType AS Byte
+	Fixed2[6] AS Byte
+	Version AS Byte
+	HeaderSum AS Byte
+End Type
+	

@@ -1,0 +1,204 @@
+Const FT_PINCFG_MCP_CS = 3
+Const FT_PINCFG_WRITE_ENABLE = 4
+Const FT_PINCFG_LATCH = 5
+Const FT_PINCFG_CHIP_ENABLE = 6
+Const FT_PINCFG_READ_ENABLE = 7
+
+Const FT_EPROM_WRITE = &HFF
+Const FT_EPROM_READ = &H00
+
+Enum FT_EPROM_IO
+	FTE_INPUT
+	FTE_OUTPUT
+End Enum
+
+Class FT232H_GBA_ROM
+Protected 
+	dummy AS DWord
+	Data AS DWord
+	dir AS FT_EPROM_IO
+	ft AS *FT232H
+	mcp As *FT232H_MCP23017
+	bRomEnalbe AS BOOL
+	bReadEnable AS BOOL
+	bWriteEnable AS BOOL
+Public
+	Sub init(ftc AS *FT232H)
+		ft=ftc
+
+		'FT232H PIN direction config
+		ft->gpio->setACBusDir(&HFF)
+		ft->gpio->setADBusDir(&HF0)
+
+		'ここでSPIの初期設定を行うので、↑のADバスのリセットを下に持っていかないこと！
+		mcp=new FT232H_MCP23017(ft,FT_PINCFG_MCP_CS,20)
+		mcp->SetPort(&H0000,&H0000)
+
+		'CtrlBus Init
+		bRomEnalbe=TRUE
+		bReadEnable=TRUE
+		bWriteEnable=TRUE
+
+		RomEnable(FALSE)
+		ReadEnable(FALSE)
+		WriteEnable(FALSE)
+
+		'A0-A16 Zero Clear
+		mcp->SetPortValWord(0)
+
+		dir=FTE_OUTPUT
+		SetDatabusDirection(FTE_INPUT)
+		ft->gpio->setACBusDir(FT_EPROM_WRITE)
+
+		ft->flush()		
+		'DBM(ex"init end\n")
+	End Sub
+
+	Sub RomEnable(ef AS BOOL)
+		if bRomEnalbe <> ef Then 
+			ft->gpio->setADBusBit(FT_PINCFG_CHIP_ENABLE,not(ef) AND &H01)
+			bRomEnalbe=ef
+		End If
+	End Sub
+
+	Sub ReadEnable(ef AS BOOL)
+		if bReadEnable <> ef Then
+			ft->gpio->setADBusBit(FT_PINCFG_READ_ENABLE,not(ef) AND &H01)
+			bReadEnable=ef
+		End If
+	End Sub
+
+	Sub SetAddress(adr AS DWord)
+		RomEnable(FALSE)
+		adr=adr/2
+		SetDatabusDirection(FTE_OUTPUT)
+		mcp->SetPortValWord(adr)
+		ft->gpio->setACBus(adr>>16)
+		'DBM(ex"setAddress\n")
+		RomEnable(TRUE)
+	End Sub
+
+
+	Sub ReadDataRequest()
+		SetDatabusDirection(FTE_INPUT)
+		
+		ReadEnable(TRUE)
+		mcp->ReadPortRequestWord()
+		ReadEnable(FALSE)
+	End Sub
+
+	Sub AreaReadRequest(adr AS DWord,length As DWord)
+		SetAddress(adr)
+
+		length=length/2
+		Dim i AS DWord
+		Do
+			ReadDataRequest()	
+			i++
+			if length<=i Then ExitDo
+		Loop
+	End Sub
+
+	Sub WriteEnable(ef AS BOOL)
+		if bWriteEnable <> ef Then
+			ft->gpio->setADBusBit(FT_PINCFG_WRITE_ENABLE,not(ef) AND &H01)
+			bWriteEnable=ef
+		End If
+	End Sub	
+
+	Function FT_SendCommands() AS BOOL
+		FT_SendCommands = ft->sendCommands()
+	End Function
+
+	Function FT_ReceiveData(data AS BytePtr,length AS DWord) AS BOOL
+		FT_ReceiveData = ft->reciveData(data,length)
+	End Function
+	
+	Virtual Sub WriteByte(data AS Byte)
+
+protected
+
+	
+	Sub SetDatabusDirection(idr AS FT_EPROM_IO)
+		if dir=idr Then  ExitSub
+		dir=idr
+		if idr=FTE_INPUT Then
+			mcp->SetPortDirWord(&HFFFF)
+		Else
+			mcp->SetPortDirWord(&H0000)
+		End If
+	End Sub
+End Class
+/*
+Class FT232H_DMGROM : Inherits FT232H_PPROM_BASE
+Public
+	Sub FT232H_DMGROM(ftc AS *FT232H)
+		init(ftc)
+	End Sub
+
+	Function AreaWirte(adr AS DWord,buffer AS BytePtr,length AS DWord) AS BOOL
+		Dim i AS DWord,checkBuf AS BytePtr,tmp AS DWord
+
+		ft->flush()
+
+		For i=0 To length-1
+			SetAddress(adr+i,TRUE)
+
+			WriteByte(buffer[i])
+
+			if i Mod &H10=0 Then ft->sendCommands()
+		Next i
+		
+		'ft->addCommand(ex"\x9c\xa0\x00",3)	'wait 55us 0x0080
+
+		AreaWirte=TRUE '戻り値：OK
+
+		'書き込みチェック
+		checkBuf = calloc(length+5)
+		AreaReadRequest(adr,length)
+		ft->sendCommands()
+		ft->reciveData(checkBuf,length)
+
+		For i=0 To length-1
+			if buffer[i] <> checkBuf[i] Then
+				AreaWirte=FALSE	'戻り値:NG
+				ExitFor
+			End If
+		Next i
+
+		free(checkBuf)
+	End Function
+	
+	'このルーチンには一切のムダがないのでいじらないこと（20190905現ざう）
+	Sub WriteByte(data AS Byte)
+		ReadEnable(FALSE)
+
+		'PROGRAM
+'		ft->addCommand(ex"\x9c\x09\x00",3)	'Wait 
+		
+		SetData(data)	'SET WRITE DATA
+	'	ft->addCommand(ex"\x9c\x20\x00",3)	'Wait
+
+		WriteEnable(TRUE)
+		ft->addCommand(ex"\x9c\xf0\x00",3)	'wait 55us
+
+		WriteEnable(FALSE)
+
+		ReadEnable(TRUE)
+		'wait 4us
+'		ft->addCommand(ex"\x9c\x20\x00",3)	'wait
+
+'		ReadEnable(TRUE)
+		SetData(&HFF)'次のデータで誤らないように	[必要]
+
+'		SetDatabusDirection(FTE_INPUT)
+'		ReadEnable(TRUE)
+'		ft->addCommand(ex"\x9c\x09\x00",3)
+	End Sub
+	
+Private
+	
+End Class
+
+
+:*/
