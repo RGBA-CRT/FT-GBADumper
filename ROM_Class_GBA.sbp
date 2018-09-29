@@ -23,7 +23,7 @@ Protected
 	bReadEnable AS BOOL
 	bWriteEnable AS BOOL
 Public
-	Sub init(ftc AS *FT232H)
+	Sub FT232H_GBA_ROM(ftc AS *FT232H)
 		ft=ftc
 
 		'FT232H PIN direction config
@@ -54,20 +54,6 @@ Public
 		'DBM(ex"init end\n")
 	End Sub
 
-	Sub RomEnable(ef AS BOOL)
-		if bRomEnalbe <> ef Then 
-			ft->gpio->setADBusBit(FT_PINCFG_CHIP_ENABLE,not(ef) AND &H01)
-			bRomEnalbe=ef
-		End If
-	End Sub
-
-	Sub ReadEnable(ef AS BOOL)
-		if bReadEnable <> ef Then
-			ft->gpio->setADBusBit(FT_PINCFG_READ_ENABLE,not(ef) AND &H01)
-			bReadEnable=ef
-		End If
-	End Sub
-
 	Sub SetAddress(adr AS DWord)
 		RomEnable(FALSE)
 		adr=adr>>1
@@ -79,7 +65,6 @@ Public
 		'DBM(ex"setAddress\n")
 		RomEnable(TRUE)
 	End Sub
-
 
 	Sub ReadDataRequest()
 		SetDatabusDirection(FTE_INPUT)
@@ -101,12 +86,34 @@ Public
 		Loop
 	End Sub
 
-	Sub WriteEnable(ef AS BOOL)
-		if bWriteEnable <> ef Then
-			ft->gpio->setADBusBit(FT_PINCFG_WRITE_ENABLE,not(ef) AND &H01)
-			bWriteEnable=ef
-		End If
-	End Sub	
+	Function SloveRomSize() AS DWord
+		Const GBA_SIZESLOVE_SAMPLE_SIZE = 1024*10
+		Const GBA_SIZESLOVE_SETP = &H100000*4
+		Const GBA_SIZESLOVE_OFFSET = &H0000
+		Dim head As BytePtr, inbuf AS BytePtr,i AS Long
+
+		head  = calloc(GBA_SIZESLOVE_SAMPLE_SIZE)
+		inbuf = calloc(GBA_SIZESLOVE_SAMPLE_SIZE)
+
+		Do
+			AreaReadRequest(GBA_SIZESLOVE_SETP*i+GBA_SIZESLOVE_OFFSET,GBA_SIZESLOVE_SAMPLE_SIZE)
+			FT_SendCommands()
+			FT_ReceiveData(inbuf,GBA_SIZESLOVE_SAMPLE_SIZE)
+
+			if isFilled(inbuf,GBA_SIZESLOVE_SAMPLE_SIZE,&HFF)=TRUE Then ExitDo	'SAMPLE_SIZE•ª‚ªFF‚Å–„‚ß‚ç‚ê‚Ä‚¢‚½‚ç
+			if i=0 Then
+				memcpy(head,inbuf,GBA_SIZESLOVE_SAMPLE_SIZE)
+			Else
+				if isSameBin(inbuf,head,GBA_SIZESLOVE_SAMPLE_SIZE)=TRUE Then ExitDo	'æ“ª‚Æ”äŠr
+			Endif
+			i++
+		Loop
+
+		SloveRomSize=i*GBA_SIZESLOVE_SETP
+
+		free(head)
+		free(inbuf )
+	End Function
 
 	Function FT_SendCommands() AS BOOL
 		FT_SendCommands = ft->sendCommands()
@@ -115,10 +122,30 @@ Public
 	Function FT_ReceiveData(data AS BytePtr,length AS DWord) AS BOOL
 		FT_ReceiveData = ft->reciveData(data,length)
 	End Function
-	
-	Virtual Sub WriteByte(data AS Byte)
 
 protected
+
+
+	Sub RomEnable(ef AS BOOL)
+		if bRomEnalbe <> ef Then 
+			ft->gpio->setADBusBit(FT_PINCFG_CHIP_ENABLE,not(ef) AND &H01)
+			bRomEnalbe=ef
+		End If
+	End Sub
+
+	Sub ReadEnable(ef AS BOOL)
+		if bReadEnable <> ef Then
+			ft->gpio->setADBusBit(FT_PINCFG_READ_ENABLE,not(ef) AND &H01)
+			bReadEnable=ef
+		End If
+	End Sub
+
+	Sub WriteEnable(ef AS BOOL)
+		if bWriteEnable <> ef Then
+			ft->gpio->setADBusBit(FT_PINCFG_WRITE_ENABLE,not(ef) AND &H01)
+			bWriteEnable=ef
+		End If
+	End Sub	
 
 	
 	Sub SetDatabusDirection(idr AS FT_EPROM_IO)

@@ -4,7 +4,6 @@
  * GAMEBOY A0-A15 ::: GBA D0-D15
  * GAMEBOY D0-D7  ::: GBA A16-A23
  *        
- * W I P な の で ま だコ ー ド が 汚 い
  */
 
 'AB-FT232HLib
@@ -17,79 +16,135 @@
 #console
 
 Const FT_COMMAND_BUFFER_SIZE = 1024*1024*5
+main()
 
-Print "FT232H-GBAdvance-Dumper WIP      RGBA_CRT 2018"
+Sub main()
+	Print "FT232H-GBAdvance-Dumper v0.0      RGBA_CRT 2018"
 
-'Open FT232H
-Dim ft AS *FT232H
-ft=new FT232H(FT_COMMAND_BUFFER_SIZE)
+	'Open FT232H
+	Dim ft AS *FT232H
+	ft=new FT232H(FT_COMMAND_BUFFER_SIZE)
 
-if ft->listupDeviceToConsole()=FALSE Then Input "[PRESS ENTER]",ft:End
+	if ft->listupDeviceToConsole()=FALSE Then Input "[PRESS ENTER]",ft:End
 
-Dim ftID As DWord
-if ft->getNumberOfDevice() > 1 Then input "Select device >",ftID
+	Dim ftID As DWord
+	if ft->getNumberOfDevice() > 1 Then input "Select device >",ftID
 
-if ft->openDevice(ftID)=FALSE Then Print "OpenError" : End
-printf(ex"device #%02d online.\n\n",ftID)
+	if ft->openDevice(ftID)=FALSE Then Print "OpenError" : End
+	printf(ex"device #%02d online.\n\n",ftID)
 
-Dim buf[512] AS Byte
-
-
-
-Dim fe AS *FT232H_GBA_ROM
-fe=New FT232H_GBA_ROM()
-fe->init(ft)
-fe->FT_SendCommands()
-
-fe->AreaReadRequest(0,512)
-fe->FT_SendCommands()
-fe->FT_ReceiveData(buf,512)
-Dump(buf+&HA0,32,&HA0)
-Print
-
-Dim header AS GBA_ROM_HEADER
-memcpy(VarPtr(header),buf,sizeof(GBA_ROM_HEADER))
-
-printf(ex"GBA ROM INFO:\n Title: %s\n GameCode: %s\n MakerCode: %c%c\n\n",header.Title,Dw2Str(GetDWord(VarPtr(header.GameCode))),header.MakerCode[0],header.MakerCode[1])
-if (CheckNLogo(VarPtr(header)) or CheckHeaderSum(VarPtr(header)))=FALSE Then
-	printf(ex"[接触不良] Contact failue!\n")
-Endif 
-
-
-Dim romSize AS DWord
-romSize=SloveRomSize(fe)
-printf(ex"[推定]ROM Size0x:%08X -> %dMB \n\n",romSize,romSize/(1024*1024))
-ft->flush()
-
-Const GBAD_BUFFER_SIZE=1024*50
-Dim rxbuf AS BytePtr
-rxbuf=calloc(GBAD_BUFFER_SIZE)
-
-Dim i AS DWord, lt AS DWord
-Dim out AS File
-out.openFile(MakeStr(header.Title)+".test.gba",GENERIC_WRITE)
-lt = GetTickCount()
-
-Do
-
-	fe->AreaReadRequest(i*GBAD_BUFFER_SIZE,GBAD_BUFFER_SIZE)
+	'init GBA Bus Class
+	Dim fe AS *FT232H_GBA_ROM
+	fe=New FT232H_GBA_ROM(ft)
 	fe->FT_SendCommands()
-	fe->FT_ReceiveData(rxbuf,GBAD_BUFFER_SIZE)
 
-	out.write(rxbuf,GBAD_BUFFER_SIZE)
-	i++
+	'Read Header
+	Dim header AS GBA_ROM_HEADER
+	Dim romSize AS DWord
 
-	printf(ex"[DumpROM] ReadTotal %dKB %dMB ::: Time:%ds %dkb/s         \r",GBAD_BUFFER_SIZE*i/1024,GBAD_BUFFER_SIZE*i/(1024*1024), (GetTickCount()-lt)/1024,((i*GBAD_BUFFER_SIZE)/(GetTickCount()-lt)) As DWord)
+	Dim cmd AS Long
+	Do
+		GetHeaderFromFT(fe,VarPtr(header))
+		Dump(VarPtr(header)+&HA0,32,&HA0)
+		Print
 
-Loop
-debug
+
+		'Print Header
+		printf(ex"GBA ROM INFO:\n Title: %s\n GameCode  : %s\n MakerCode : %c%c\n Version   : 1.%d\n UnitCode  : %02X (dev:%02X)\n",header.Title,Dw2Str(GetDWord(VarPtr(header.GameCode))),header.MakerCode[0],header.MakerCode[1],header.Version,header.DeviceType,header.MainUnitCode)
+		
+		if isSameBin(header.Fixed2,ex"\x24\x24\x24\xFF",4) Then 
+			printf(ex"\nDSメモリー拡張カートリッジは非対応です。\n")
+			if (GetKeyState(VK_ESCAPE) And &H80)=0 Then Goto *EXIT_PROGRAM
+		End If
+
+		if (CheckNLogo(VarPtr(header)) or CheckHeaderSum(VarPtr(header)))=FALSE Then
+			colorPrint(PH_ERROR,ex">> [接触不良] Contact failue!\n")	
+			if (GetKeyState(VK_ESCAPE) And &H80)=0 Then Goto *EXIT_PROGRAM
+		Else
+			colorPrint(PH_SUCCESS,ex">> GBA cartridge detected!\n")
+		Endif 
+
+		'Slove ROM size
+		romSize=fe->SloveRomSize()
+		printf(ex"[推定]ROM Size 0x:%08X -> %dMB \n\n",romSize,romSize/(1024*1024))
+		ft->flush()
+
+		Print "1.DumpRom 2.RomViewer 3.ManualRomSize"
+		Input "> ",cmd
+
+		Select Case cmd
+			Case 1
+				'DumpRom
+				DumpRom(fe, MakeStr(header.Title)+".gba",romSize)
+			Case 2
+				RomViewer(fe)
+			Case 3
+				Input ex"Input Rom Size (ex:&H00800000) \n> ",romSize
+				DumpRom(fe, MakeStr(header.Title)+".gba",romSize)
+			Case 4
+				debug
+		End Select		
+
+		if cmd<>0 Then 
+*EXIT_PROGRAM
+			Input ex"\n\n[PRESS ENTER]",cmd
+		Endif
+		Print ex"\n\n"
+	Loop
+End Sub
+
+'------------------
+'Sub routines
+'------------------
+Sub GetHeaderFromFT(fe As *FT232H_GBA_ROM, header AS *GBA_ROM_HEADER)
+	fe->AreaReadRequest(0,sizeof(GBA_ROM_HEADER))
+	fe->FT_SendCommands()
+	fe->FT_ReceiveData(header,sizeof(GBA_ROM_HEADER))
+End Sub
+
+Const GBAD_BUFFER_SIZE=1024*64
+sub DumpRom(fe As *FT232H_GBA_ROM, filename AS BytePtr,length AS DWord)
+	Dim rxbuf AS BytePtr
+	rxbuf=calloc(GBAD_BUFFER_SIZE)
+
+	Dim i AS DWord, lt AS DWord,adr AS DWord
+	Dim out AS File
+	if out.openFile(filename,GENERIC_WRITE)=FALSE Then printf("File write error! GLE=%d\n",GetLastError()):ExitSub
+	lt = GetTickCount()
+
+	adr=00000000
+	Do
+		fe->AreaReadRequest(adr,GBAD_BUFFER_SIZE)
+		fe->FT_SendCommands()
+		fe->FT_ReceiveData(rxbuf,GBAD_BUFFER_SIZE)
+
+		out.write(rxbuf,GBAD_BUFFER_SIZE)
+
+		i++
+		adr=i*GBAD_BUFFER_SIZE
+
+		printf(ex"[DumpROM] %08Xh %d/%dMB %d%% ::: Time:%ds %dkb/s         \r",
+			adr,							'Address
+			adr/&H100000,length/&H100000,	'Dumped Megabyte
+			(adr/length*100) AS DWord,		'Total Megabyte
+			(GetTickCount()-lt)/1024,		'Processing Time
+			((i*GBAD_BUFFER_SIZE)/(GetTickCount()-lt)) As DWord	'Throughput
+		)
+
+		if (i*GBAD_BUFFER_SIZE)>=length Then Exitdo
+		if CheckCancelKey() Then printf("\n>>>>> Canceled by user.\n"):exitdo
+	Loop
+	out.close()
+	free(rxbuf)
+	printf(ex"\nRom saved to %s\n",filename)
+End Sub
 
 Function CheckNLogo(header AS *GBA_ROM_HEADER) AS BOOL
 	Dim i aS Long,sum AS DWord
 	For i=0 To 155
 		sum+=header->NLogo[i]
 	Next i
-	printf(ex"NLogoSum: %x\n",sum)
+	printf(ex" NLogoSum  : %x\n",sum)
 
 	if sum=&H4B1B Then CheckNLogo=TRUE
 End Function
@@ -100,42 +155,11 @@ Function CheckHeaderSum(header AS *GBA_ROM_HEADER) AS BOOL
 		sum=sum-GetByte(header+i)
 	Next i
 	sum= (sum - &H19) AND &HFF
-	printf(ex"HeaderSum: %x %x\n",sum, header->HeaderSum)
+	printf(ex" HeaderSum : %x %x\n",sum, header->HeaderSum)
 
 	if sum=header->HeaderSum Then CheckHeaderSum=TRUE
 End Function
 
-Const GBA_SIZESLOVE_SAMPLE_SIZE = 1024*10
-Const GBA_SIZESLOVE_SETP = &H100000*4
-Const GBA_SIZESLOVE_OFFSET = &H0000
-Function SloveRomSize(fe AS *FT232H_GBA_ROM) AS DWord
-	Dim head As BytePtr, inbuf AS BytePtr,i AS Long
-
-	head=calloc(GBA_SIZESLOVE_SAMPLE_SIZE)
-	inbuf =calloc(GBA_SIZESLOVE_SAMPLE_SIZE)
-
-	Do
-		printf(ex"slove: AREA READ ::: %08X\n",GBA_SIZESLOVE_SETP*i+GBA_SIZESLOVE_OFFSET)
-		fe->AreaReadRequest(GBA_SIZESLOVE_SETP*i+GBA_SIZESLOVE_OFFSET,GBA_SIZESLOVE_SAMPLE_SIZE)
-		fe->FT_SendCommands()
-		fe->FT_ReceiveData(inbuf,GBA_SIZESLOVE_SAMPLE_SIZE)
-	'	Dump(inbuf,32)
-
-		if isFilled(inbuf,GBA_SIZESLOVE_SAMPLE_SIZE,&HFF)=TRUE Then printf("reason:FF"):ExitDo	'SAMPLE_SIZE分がFFで埋められていたら
-		if i=0 Then
-			memcpy(head,inbuf,GBA_SIZESLOVE_SAMPLE_SIZE)
-		Else
-			if compareBin(inbuf,head,GBA_SIZESLOVE_SAMPLE_SIZE)=TRUE Then printf("reason:Some"):ExitDo	'先頭と比較
-		Endif
-		i++
-	Loop
-
-'	if i Mod 4 <>0 Then i+=4-(i Mod 4)
-	SloveRomSize=i*GBA_SIZESLOVE_SETP
-
-	free(head)
-	free(inbuf )
-End Function
 
 Function isFilled(adr As BytePtr,size As DWord,checkByte As Byte) As Long
 	Dim i As Long
@@ -145,12 +169,25 @@ Function isFilled(adr As BytePtr,size As DWord,checkByte As Byte) As Long
 	isFilled=TRUE
 End Function
 		
-Function compareBin(data1 As BytePtr,data2 As BytePtr,size As DWord) As Long
-	Dim i As Long
-	For i=0 To size-1
-		if data1[i]<>data2[i] Then ExitFunction
-	Next
-	compareBin=TRUE
+Sub RomViewer(fe AS *FT232H_GBA_ROM)
+	Dim buf[256] AS Byte
+
+	Do
+		Dim adr aS DWord
+		input "ADDRESS > ",adr
+		fe->AreaReadRequest(adr,128)
+		fe->FT_SendCommands()
+		fe->FT_ReceiveData(buf,128)
+		Dump(buf,128,adr)
+	Loop
+End Sub
+
+Function CheckCancelKey() AS BOOL
+	if GetKeyState(VK_ESCAPE) And &H80 Then 
+		CheckCancelKey=TRUE
+	Else
+		CheckCancelKey=FALSE
+	End If
 End Function
 
 'https://problemkaputt.de/gbatek.htm#gbacartridgeheader
