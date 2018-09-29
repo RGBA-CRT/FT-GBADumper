@@ -61,8 +61,7 @@ Public
 		ft->gpio->setACBus((adr>>16) And &HFF)
 	'	printf(ex"setAddress(Word mode Address): %02x:%04x\n",(adr>>16) And &HFF,adr And &HFFFF)
 		mcp->SetPortValWord(adr And &HFFFF)
-		ft->wait(8)
-		'DBM(ex"setAddress\n")
+	'	ft->wait(8)
 		RomEnable(TRUE)
 	End Sub
 

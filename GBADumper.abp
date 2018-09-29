@@ -50,7 +50,15 @@ Sub main()
 
 
 		'Print Header
-		printf(ex"GBA ROM INFO:\n Title: %s\n GameCode  : %s\n MakerCode : %c%c\n Version   : 1.%d\n UnitCode  : %02X (dev:%02X)\n",header.Title,Dw2Str(GetDWord(VarPtr(header.GameCode))),header.MakerCode[0],header.MakerCode[1],header.Version,header.DeviceType,header.MainUnitCode)
+		Dim title[16] AS Byte
+		memcpy(title,header.Title,12)
+		printf(ex"GBA ROM INFO:\n Title: %s\n GameCode  : %s\n MakerCode : %c%c\n Version   : 1.%d\n UnitCode  : %02X (dev:%02X)\n",
+			title,
+			Dw2Str(GetDWord(VarPtr(header.GameCode))),
+			header.MakerCode[0],header.MakerCode[1],
+			header.Version,
+			header.DeviceType, header.MainUnitCode
+		)
 		
 		if isSameBin(header.Fixed2,ex"\x24\x24\x24\xFF",4) Then 
 			printf(ex"\nDSメモリー拡張カートリッジは非対応です。\n")
@@ -75,12 +83,12 @@ Sub main()
 		Select Case cmd
 			Case 1
 				'DumpRom
-				DumpRom(fe, MakeStr(header.Title)+".gba",romSize)
+				DumpRom(fe, MakeStr(title)+".gba",romSize)
 			Case 2
 				RomViewer(fe)
 			Case 3
 				Input ex"Input Rom Size (ex:&H00800000) \n> ",romSize
-				DumpRom(fe, MakeStr(header.Title)+".gba",romSize)
+				DumpRom(fe, MakeStr(title)+".gba",romSize)
 			Case 4
 				debug
 		End Select		
