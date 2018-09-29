@@ -51,9 +51,17 @@ Dim header AS GBA_ROM_HEADER
 memcpy(VarPtr(header),buf,sizeof(GBA_ROM_HEADER))
 
 printf(ex"GBA ROM INFO:\n Title: %s\n GameCode: %s\n MakerCode: %c%c\n\n",header.Title,Dw2Str(GetDWord(VarPtr(header.GameCode))),header.MakerCode[0],header.MakerCode[1])
+if (CheckNLogo(VarPtr(header)) or CheckHeaderSum(VarPtr(header)))=FALSE Then
+	printf(ex"[ê⁄êGïsó«] Contact failue!\n")
+Endif 
+
+
+Dim romSize AS DWord
+romSize=SloveRomSize(fe)
+printf(ex"[êÑíË]ROM Size0x:%08X -> %dMB \n\n",romSize,romSize/(1024*1024))
 ft->flush()
 
-Const GBAD_BUFFER_SIZE=1024*20
+Const GBAD_BUFFER_SIZE=1024*50
 Dim rxbuf AS BytePtr
 rxbuf=calloc(GBAD_BUFFER_SIZE)
 
@@ -75,6 +83,75 @@ Do
 
 Loop
 debug
+
+Function CheckNLogo(header AS *GBA_ROM_HEADER) AS BOOL
+	Dim i aS Long,sum AS DWord
+	For i=0 To 155
+		sum+=header->NLogo[i]
+	Next i
+	printf(ex"NLogoSum: %x\n",sum)
+
+	if sum=&H4B1B Then CheckNLogo=TRUE
+End Function
+
+Function CheckHeaderSum(header AS *GBA_ROM_HEADER) AS BOOL
+	Dim i aS Long,sum AS DWord
+	For i=&HA0 To &HBC
+		sum=sum-GetByte(header+i)
+	Next i
+	sum= (sum - &H19) AND &HFF
+	printf(ex"HeaderSum: %x %x\n",sum, header->HeaderSum)
+
+	if sum=header->HeaderSum Then CheckHeaderSum=TRUE
+End Function
+
+Const GBA_SIZESLOVE_SAMPLE_SIZE = 1024*10
+Const GBA_SIZESLOVE_SETP = &H100000*4
+Const GBA_SIZESLOVE_OFFSET = &H0000
+Function SloveRomSize(fe AS *FT232H_GBA_ROM) AS DWord
+	Dim head As BytePtr, inbuf AS BytePtr,i AS Long
+
+	head=calloc(GBA_SIZESLOVE_SAMPLE_SIZE)
+	inbuf =calloc(GBA_SIZESLOVE_SAMPLE_SIZE)
+
+	Do
+		printf(ex"slove: AREA READ ::: %08X\n",GBA_SIZESLOVE_SETP*i+GBA_SIZESLOVE_OFFSET)
+		fe->AreaReadRequest(GBA_SIZESLOVE_SETP*i+GBA_SIZESLOVE_OFFSET,GBA_SIZESLOVE_SAMPLE_SIZE)
+		fe->FT_SendCommands()
+		fe->FT_ReceiveData(inbuf,GBA_SIZESLOVE_SAMPLE_SIZE)
+	'	Dump(inbuf,32)
+
+		if isFilled(inbuf,GBA_SIZESLOVE_SAMPLE_SIZE,&HFF)=TRUE Then printf("reason:FF"):ExitDo	'SAMPLE_SIZEï™Ç™FFÇ≈ñÑÇﬂÇÁÇÍÇƒÇ¢ÇΩÇÁ
+		if i=0 Then
+			memcpy(head,inbuf,GBA_SIZESLOVE_SAMPLE_SIZE)
+		Else
+			if compareBin(inbuf,head,GBA_SIZESLOVE_SAMPLE_SIZE)=TRUE Then printf("reason:Some"):ExitDo	'êÊì™Ç∆î‰är
+		Endif
+		i++
+	Loop
+
+'	if i Mod 4 <>0 Then i+=4-(i Mod 4)
+	SloveRomSize=i*GBA_SIZESLOVE_SETP
+
+	free(head)
+	free(inbuf )
+End Function
+
+Function isFilled(adr As BytePtr,size As DWord,checkByte As Byte) As Long
+	Dim i As Long
+	For i=0 To size-1
+		if adr[i]<>checkByte Then ExitFunction
+	Next
+	isFilled=TRUE
+End Function
+		
+Function compareBin(data1 As BytePtr,data2 As BytePtr,size As DWord) As Long
+	Dim i As Long
+	For i=0 To size-1
+		if data1[i]<>data2[i] Then ExitFunction
+	Next
+	compareBin=TRUE
+End Function
 
 'https://problemkaputt.de/gbatek.htm#gbacartridgeheader
 Type GBA_ROM_HEADER

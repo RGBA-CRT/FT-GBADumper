@@ -70,10 +70,12 @@ Public
 
 	Sub SetAddress(adr AS DWord)
 		RomEnable(FALSE)
-		adr=adr/2
+		adr=adr>>1
 		SetDatabusDirection(FTE_OUTPUT)
-		mcp->SetPortValWord(adr)
-		ft->gpio->setACBus(adr>>16)
+		ft->gpio->setACBus((adr>>16) And &HFF)
+	'	printf(ex"setAddress(Word mode Address): %02x:%04x\n",(adr>>16) And &HFF,adr And &HFFFF)
+		mcp->SetPortValWord(adr And &HFFFF)
+		ft->wait(8)
 		'DBM(ex"setAddress\n")
 		RomEnable(TRUE)
 	End Sub
