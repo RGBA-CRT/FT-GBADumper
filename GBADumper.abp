@@ -19,7 +19,7 @@ Const FT_COMMAND_BUFFER_SIZE = 1024*1024*5
 main()
 
 Sub main()
-	Print "FT232H-GBAdvance-Dumper v0.0a      RGBA_CRT 2018"
+	Print "FT232H-GBAdvance-Dumper v0.0b      RGBA_CRT 2018"
 
 	'Open FT232H
 	Dim ft AS *FT232H
@@ -48,7 +48,6 @@ Sub main()
 		Dump(VarPtr(header)+&HA0,32,&HA0)
 		Print
 
-
 		'Print Header
 		Dim title[16] AS Byte
 		memcpy(title,header.Title,12)
@@ -60,13 +59,16 @@ Sub main()
 			header.DeviceType, header.MainUnitCode
 		)
 		
+		'DS Memory Expansion Cartridge
 		if isSameBin(header.Fixed2,ex"\x24\x24\x24\xFF",4) Then 
-			printf(ex"\nDSメモリー拡張カートリッジは非対応です。\n")
+			printf(ex"\nDSメモリー拡張カートリッジは非対応です。\nThis cartridge not supported.\n")
 			if (GetKeyState(VK_ESCAPE) And &H80)=0 Then Goto *EXIT_PROGRAM
 		End If
 
+		'Logo & Header check
 		if (CheckNLogo(VarPtr(header)) or CheckHeaderSum(VarPtr(header)))=FALSE Then
 			colorPrint(PH_ERROR,ex">> [接触不良] Contact failue!\n")	
+			'ESC押してたら強制的に選択画面に
 			if (GetKeyState(VK_ESCAPE) And &H80)=0 Then Goto *EXIT_PROGRAM
 		Else
 			colorPrint(PH_SUCCESS,ex">> GBA cartridge detected!\n")
@@ -74,7 +76,7 @@ Sub main()
 
 		'Slove ROM size
 		romSize=fe->SloveRomSize()
-		printf(ex"[推定]ROM Size 0x:%08X -> %dMB \n\n",romSize,romSize/(1024*1024))
+		printf(ex"[推定]RomSize 0x%08X -> %dMB \n\n",romSize,romSize/(1024*1024))
 		ft->flush()
 
 		Print "1.DumpRom 2.RomViewer 3.ManualRomSize"
@@ -147,6 +149,7 @@ sub DumpRom(fe As *FT232H_GBA_ROM, filename AS BytePtr,length AS DWord)
 	printf(ex"\nRom saved to %s\n",filename)
 End Sub
 
+'NLogoのチェックサム
 Function CheckNLogo(header AS *GBA_ROM_HEADER) AS BOOL
 	Dim i aS Long,sum AS DWord
 	For i=0 To 155
@@ -157,6 +160,7 @@ Function CheckNLogo(header AS *GBA_ROM_HEADER) AS BOOL
 	if sum=&H4B1B Then CheckNLogo=TRUE
 End Function
 
+'ヘッダのチェックサム
 Function CheckHeaderSum(header AS *GBA_ROM_HEADER) AS BOOL
 	Dim i aS Long,sum AS DWord
 	For i=&HA0 To &HBC
@@ -168,7 +172,7 @@ Function CheckHeaderSum(header AS *GBA_ROM_HEADER) AS BOOL
 	if sum=header->HeaderSum Then CheckHeaderSum=TRUE
 End Function
 
-
+'指定領域が特定のバイトで埋められているかチェック
 Function isFilled(adr As BytePtr,size As DWord,checkByte As Byte) As Long
 	Dim i As Long
 	For i=0 To size-1
@@ -177,6 +181,7 @@ Function isFilled(adr As BytePtr,size As DWord,checkByte As Byte) As Long
 	isFilled=TRUE
 End Function
 		
+'GBAのアドレス空間を眺める
 Sub RomViewer(fe AS *FT232H_GBA_ROM)
 	Dim buf[256] AS Byte
 
@@ -190,6 +195,7 @@ Sub RomViewer(fe AS *FT232H_GBA_ROM)
 	Loop
 End Sub
 
+'キャンセルキーが押されているか判断
 Function CheckCancelKey() AS BOOL
 	if GetKeyState(VK_ESCAPE) And &H80 Then 
 		CheckCancelKey=TRUE
