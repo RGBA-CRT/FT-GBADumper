@@ -22,9 +22,15 @@ Protected
 	bRomEnalbe AS BOOL
 	bReadEnable AS BOOL
 	bWriteEnable AS BOOL
+
+	spi As *FT232H_SPI
+	gpio As *FT232H_GPIO
 Public
 	Sub FT232H_GBA_ROM(ftc AS *FT232H)
 		ft=ftc
+		'最適化のため
+		spi=ft->spi
+		gpio=ft->gpio
 
 		'FT232H PIN direction config
 		ft->gpio->setACBusDir(&HFF)
@@ -46,8 +52,8 @@ Public
 		'A0-A16 Zero Clear
 		mcp->SetPortValWord(0)
 
-		dir=FTE_OUTPUT
-		SetDatabusDirection(FTE_INPUT)
+		dir=FTE_INPUT
+		SetDatabusDirection(FTE_OUTPUT)
 		ft->gpio->setACBusDir(FT_EPROM_WRITE)
 
 		ft->flush()		
@@ -55,34 +61,45 @@ Public
 	End Sub
 
 	Sub SetAddress(adr AS DWord)
-		RomEnable(FALSE)
 		adr=adr>>1
+
+		RomEnable(FALSE)
+
 		SetDatabusDirection(FTE_OUTPUT)
 		ft->gpio->setACBus((adr>>16) And &HFF)
-	'	printf(ex"setAddress(Word mode Address): %02x:%04x\n",(adr>>16) And &HFF,adr And &HFFFF)
 		mcp->SetPortValWord(adr And &HFFFF)
-	'	ft->wait(8)
-		RomEnable(TRUE)
-	End Sub
 
-	Sub ReadDataRequest()
+		RomEnable(TRUE)
+
 		SetDatabusDirection(FTE_INPUT)
 		
-		ReadEnable(TRUE)
-		mcp->ReadPortRequestWord()
-		ReadEnable(FALSE)
 	End Sub
 
 	Sub AreaReadRequest(adr AS DWord,length As DWord)
 		SetAddress(adr)
 
-		length=length/2
+		length=length>>1
 		Dim i AS DWord
 		Do
-			ReadDataRequest()	
+			'ReadEnable(TRUE) '最適化のため展開		
+			gpio->setADBusBit(FT_PINCFG_READ_ENABLE,0)
+
+			'Read
+			'mcp->ReadPortRequestWord() '最適化のため展開					
+			spi->DeviceEnable(FT_PINCFG_MCP_CS,TRUE)
+'				spi->sendByte(MCP_CONTROLBYTE_READ)
+'				spi->sendByte(MCP23017_GPIOA)
+				spi->sendData(ex"\x41\x12",2)
+				spi->reciveRequest(2)
+			spi->DeviceEnable(FT_PINCFG_MCP_CS,FALSE)	
+
+			'ReadEnable(FALSE) '最適化のため展開
+			gpio->setADBusBit(FT_PINCFG_READ_ENABLE,1)
+
 			i++
 			if length<=i Then ExitDo
 		Loop
+		bReadEnable=FALSE
 	End Sub
 
 	Function SloveRomSize() AS DWord
@@ -131,6 +148,7 @@ protected
 			bRomEnalbe=ef
 		End If
 	End Sub
+	
 
 	Sub ReadEnable(ef AS BOOL)
 		if bReadEnable <> ef Then

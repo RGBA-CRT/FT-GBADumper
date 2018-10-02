@@ -19,7 +19,7 @@ Const FT_COMMAND_BUFFER_SIZE = 1024*1024*5
 main()
 
 Sub main()
-	Print "FT232H-GBAdvance-Dumper v0.0b      RGBA_CRT 2018"
+	Print "FT232H-GBAdvance-Dumper v0.1      RGBA_CRT 2018"
 
 	'Open FT232H
 	Dim ft AS *FT232H
@@ -112,17 +112,17 @@ Sub GetHeaderFromFT(fe As *FT232H_GBA_ROM, header AS *GBA_ROM_HEADER)
 	fe->FT_ReceiveData(header,sizeof(GBA_ROM_HEADER))
 End Sub
 
-Const GBAD_BUFFER_SIZE=1024*64
+Const GBAD_BUFFER_SIZE=&H4000 '1024*16
 sub DumpRom(fe As *FT232H_GBA_ROM, filename AS BytePtr,length AS DWord)
 	Dim rxbuf AS BytePtr
 	rxbuf=calloc(GBAD_BUFFER_SIZE)
 
-	Dim i AS DWord, lt AS DWord,adr AS DWord
+	Dim i AS DWord, lt AS DWord,procesTime As DWord,adr AS DWord,nt AS DWord
 	Dim out AS File
-	if out.openFile(filename,GENERIC_WRITE)=FALSE Then printf("File write error! GLE=%d\n",GetLastError()):ExitSub
+	if out.openFile(filename,GENERIC_WRITE)=FALSE Then printf(ex"File write error! GLE=%d\n",GetLastError()):ExitSub
 	lt = GetTickCount()
 
-	adr=00000000
+	adr=&H00000000
 	Do
 		fe->AreaReadRequest(adr,GBAD_BUFFER_SIZE)
 		fe->FT_SendCommands()
@@ -131,17 +131,20 @@ sub DumpRom(fe As *FT232H_GBA_ROM, filename AS BytePtr,length AS DWord)
 		out.write(rxbuf,GBAD_BUFFER_SIZE)
 
 		i++
-		adr=i*GBAD_BUFFER_SIZE
-
-		printf(ex"[DumpROM] %08Xh %d/%dMB %d%% ::: Time:%ds %dkb/s         \r",
+		adr=i*GBAD_BUFFER_SIZE		
+		procesTime=GetTickCount()-lt
+		
+		printf(ex"[DumpROM] %08Xh %d/%dMB %d%% ::: Time:%ds %dkb/s  delta:%d       \r",
 			adr,							'Address
 			adr/&H100000,length/&H100000,	'Dumped Megabyte
 			(adr/length*100) AS DWord,		'Total Megabyte
-			(GetTickCount()-lt)/1024,		'Processing Time
-			((i*GBAD_BUFFER_SIZE)/(GetTickCount()-lt)) As DWord	'Throughput
+			procesTime/1024,		'Processing Time
+			(adr/procesTime) As DWord,	'Throughput
+			GetTickCount()-nt
 		)
+		nt=GetTickCount()
 
-		if (i*GBAD_BUFFER_SIZE)>=length Then Exitdo
+		if adr>=length Then Exitdo
 		if CheckCancelKey() Then printf("\n>>>>> Canceled by user.\n"):exitdo
 	Loop
 	out.close()
