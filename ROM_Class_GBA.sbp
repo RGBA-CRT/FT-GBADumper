@@ -1,6 +1,6 @@
 Const FT_PINCFG_MCP_CS = 3
 Const FT_PINCFG_WRITE_ENABLE = 4
-Const FT_PINCFG_LATCH = 5
+Const FT_PINCFG_RST = 5
 Const FT_PINCFG_CHIP_ENABLE = 6
 Const FT_PINCFG_READ_ENABLE = 7
 
@@ -48,6 +48,8 @@ Public
 		RomEnable(FALSE)
 		ReadEnable(FALSE)
 		WriteEnable(FALSE)
+		'RST
+		ft->gpio->setADBusBit(FT_PINCFG_RST,1)
 
 		'A0-A16 Zero Clear
 		mcp->SetPortValWord(0)

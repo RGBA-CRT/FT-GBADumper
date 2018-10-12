@@ -19,7 +19,7 @@ Const FT_COMMAND_BUFFER_SIZE = 1024*1024*5
 main()
 
 Sub main()
-	Print "FT232H-GBAdvance-Dumper v0.1      RGBA_CRT 2018"
+	Print "FT232H-GBAdvance-Dumper v0.1.1      RGBA_CRT 2018"
 
 	'Open FT232H
 	Dim ft AS *FT232H

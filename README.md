@@ -15,9 +15,10 @@ GBA ROM Dumper using FT232HL
 + It not supported save read/write.
 
 ## 回路 / Circuit
-+ see [FT-GBDumper](https://github.com/RGBA-CRT/FT-GBDumper)
-+ ↑の回路に5V/3.3Vスイッチを付けてください。GBAは3.3Vです。
-+ Add 5V/3.3V select switch.
++ [FT-GBDumper](https://github.com/RGBA-CRT/FT-GBDumper)と同じ。
+
+回路図を[@YoutechA320U](https://twitter.com/YoutechA320U)さんから頂いたので掲載いたします。  
+![Circuit](https://raw.githubusercontent.com/RGBA-CRT/FT-GBADumper/master/Circuit.png)
 
 ## その他 / other
 + その他はすべて[FT-GBDumper](https://github.com/RGBA-CRT/FT-GBDumper)と同じなので省略します。
