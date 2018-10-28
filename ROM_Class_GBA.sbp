@@ -88,12 +88,12 @@ Public
 
 			'Read
 			'mcp->ReadPortRequestWord() 'Å“K‰»‚Ì‚½‚ß“WŠJ					
-			spi->DeviceEnable(FT_PINCFG_MCP_CS,TRUE)
-'				spi->sendByte(MCP_CONTROLBYTE_READ)
-'				spi->sendByte(MCP23017_GPIOA)
+			'spi->DeviceEnable(FT_PINCFG_MCP_CS,TRUE)
+			gpio->setADBusBit(FT_PINCFG_MCP_CS,0)
 				spi->sendData(ex"\x41\x12",2)
 				spi->reciveRequest(2)
-			spi->DeviceEnable(FT_PINCFG_MCP_CS,FALSE)	
+			'spi->DeviceEnable(FT_PINCFG_MCP_CS,FALSE)	
+			gpio->setADBusBit(FT_PINCFG_MCP_CS,1)
 
 			'ReadEnable(FALSE) 'Å“K‰»‚Ì‚½‚ß“WŠJ
 			gpio->setADBusBit(FT_PINCFG_READ_ENABLE,1)
