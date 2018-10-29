@@ -19,7 +19,7 @@ Const FT_COMMAND_BUFFER_SIZE = 1024*200
 main()
 
 Sub main()
-	Print "FT232H-GBAdvance-Dumper v0.2      RGBA_CRT 2018"
+	Print "FT232H-GBAdvance-Dumper v0.3      RGBA_CRT 2018"
 
 	'Open FT232H
 	Dim ft AS *FT232H
@@ -134,18 +134,18 @@ sub DumpRom(fe As *FT232H_GBA_ROM, filename AS BytePtr,length AS DWord)
 		adr=i*GBAD_BUFFER_SIZE		
 		procesTime=GetTickCount()-lt
 		
-		printf(ex"[DumpROM] %08Xh %d/%dMB %d%% ::: Time:%ds %dkb/s  delta:%d       \r",
+		printf(ex"[DumpROM] %08Xh %d/%dMB %d%% ::: Time:%ds %dkb/s  delta:%d      \r",
 			adr,							'Address
 			adr/&H100000,length/&H100000,	'Dumped Megabyte
 			(adr/length*100) AS DWord,		'Total Megabyte
-			procesTime/1024,		'Processing Time
-			(adr/procesTime) As DWord,	'Throughput
+			procesTime/1000,				'Processing Time
+			(adr/procesTime) As DWord,		'Throughput
 			GetTickCount()-nt
 		)
 		nt=GetTickCount()
 
 		if adr>=length Then Exitdo
-		if CheckCancelKey() Then printf("\n>>>>> Canceled by user.\n"):exitdo
+		if CheckCancelKey() Then printf("\n\n\n>>>>> Canceled by user.\n"):exitdo
 	Loop
 	out.close()
 	free(rxbuf)
@@ -189,12 +189,14 @@ Sub RomViewer(fe AS *FT232H_GBA_ROM)
 	Dim buf[256] AS Byte
 
 	Do
-		Dim adr aS DWord
+		Dim adr aS Long
 		input "ADDRESS > ",adr
+		if adr=-1 Then ExitDo
 		fe->AreaReadRequest(adr,128)
 		fe->FT_SendCommands()
 		fe->FT_ReceiveData(buf,128)
 		Dump(buf,128,adr)
+		fe->ft->flush()
 	Loop
 End Sub
 

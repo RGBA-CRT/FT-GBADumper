@@ -17,12 +17,20 @@ Protected
 	dummy AS DWord
 	Data AS DWord
 	dir AS FT_EPROM_IO
-	ft AS *FT232H
 	mcp As *FT232H_MCP23017
 	bRomEnalbe AS BOOL
 	bReadEnable AS BOOL
 	bWriteEnable AS BOOL
+	lastAddress AS DWord
 
+	'Area Read Request Command Buffer Cache
+	cacheBuf AS BytePtr		' キャッシュバッファ
+	cacheBufUsage AS DWord	' キャッシュバッファのサイズ
+	cacheARR_Len AS DWord' キャシュしたときのAreaReadRequestの読み取りサイズ
+'	cacheMiss AS DWord
+
+Public
+	ft AS *FT232H
 	spi As *FT232H_SPI
 	gpio As *FT232H_GPIO
 Public
@@ -59,49 +67,84 @@ Public
 		ft->gpio->setACBusDir(FT_EPROM_WRITE)
 
 		ft->flush()		
+
+		cacheBuf=calloc(ft->getBufSize())
+		cacheARR_Len=0
+
+		lastAddress=&HFFFFFFFF
 		'DBM(ex"init end\n")
 	End Sub
 
 	Sub SetAddress(adr AS DWord)
 		adr=adr>>1
 
+		'/CE Low
 		RomEnable(FALSE)
 
+		'Set Address 23-16
 		SetDatabusDirection(FTE_OUTPUT)
 		ft->gpio->setACBus((adr>>16) And &HFF)
+
+		'Set Address 15-0
 		mcp->SetPortValWord(adr And &HFFFF)
 
+		'CE High
 		RomEnable(TRUE)
 
 		SetDatabusDirection(FTE_INPUT)
-		
+	End Sub
+
+	Sub dumpCmdBuf(filename AS BytePtr)
+		ft->dumpCmdBuf(filename)
 	End Sub
 
 	Sub AreaReadRequest(adr AS DWord,length As DWord)
-		SetAddress(adr)
+		'アドレスラッチが必要ない場合はしない
+		if adr<>lastAddress Then _
+			SetAddress(adr)
 
-		length=length>>1
-		Dim i AS DWord
-		Do
-			'ReadEnable(TRUE) '最適化のため展開		
-			gpio->setADBusBit(FT_PINCFG_READ_ENABLE,0)
+		'コマンドのキャッシュの存在をチェック
+		if cacheARR_Len<>length Then
+			Dim i AS DWord
+			Dim bufStart AS DWord
+			bufStart=ft->getBufUsage()
 
-			'Read
-			'mcp->ReadPortRequestWord() '最適化のため展開					
-			'spi->DeviceEnable(FT_PINCFG_MCP_CS,TRUE)
-			gpio->setADBusBit(FT_PINCFG_MCP_CS,0)
-				spi->sendData(ex"\x41\x12",2)
-				spi->reciveRequest(2)
-			'spi->DeviceEnable(FT_PINCFG_MCP_CS,FALSE)	
-			gpio->setADBusBit(FT_PINCFG_MCP_CS,1)
+			Dim len_harf AS DWord
+			len_harf=length>>1
+			Do
+				'ReadEnable(TRUE) '最適化のため展開		
+				gpio->setADBusBit(FT_PINCFG_READ_ENABLE,0)
 
-			'ReadEnable(FALSE) '最適化のため展開
-			gpio->setADBusBit(FT_PINCFG_READ_ENABLE,1)
+				'Read
+				'mcp->ReadPortRequestWord() '最適化のため展開					
+				'spi->DeviceEnable(FT_PINCFG_MCP_CS,TRUE)
+				gpio->setADBusBit(FT_PINCFG_MCP_CS,0)
+					spi->sendData(ex"\x41\x12",2)
+					spi->reciveRequest(2)
+				'spi->DeviceEnable(FT_PINCFG_MCP_CS,FALSE)	
+				gpio->setADBusBit(FT_PINCFG_MCP_CS,1)
 
-			i++
-			if length<=i Then ExitDo
-		Loop
-		bReadEnable=FALSE
+				'ReadEnable(FALSE) '最適化のため展開
+				gpio->setADBusBit(FT_PINCFG_READ_ENABLE,1)
+
+				i++
+				if len_harf<=i Then ExitDo
+			Loop
+			bReadEnable=FALSE
+
+			'コマンドをキャッシュする
+			cacheBufUsage=ft->getBufUsage()-bufStart
+			memcpy(cacheBuf,ft->getCmdBuf()+bufStart,cacheBufUsage)
+			cacheARR_Len=length
+			'cacheMiss++
+			'printf(ex"\n\ncache miss:%d, len=%d    \n\n",cacheMiss,length)
+			
+		Else
+			'キャッシュされたコマンドバッファを転送
+			ft->addReadRequest(cacheBuf,cacheBufUsage,length)
+		End If
+
+		lastAddress=adr+length
 	End Sub
 
 	Function SloveRomSize() AS DWord
