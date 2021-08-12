@@ -134,7 +134,7 @@ Public
 
 			'コマンドをキャッシュする
 			cacheBufUsage=ft->getBufUsage()-bufStart
-			memcpy(cacheBuf,ft->getCmdBuf()+bufStart,cacheBufUsage)
+			memcpy(cacheBuf,ft->getCommandBuf()+bufStart,cacheBufUsage)
 			cacheARR_Len=length
 			'cacheMiss++
 			'printf(ex"\n\ncache miss:%d, len=%d    \n\n",cacheMiss,length)
