@@ -49,7 +49,7 @@ Sub main()
 		Print
 
 		'Print Header
-		Dim title[16] AS Byte
+		Dim title[16] AS Byte, i AS Long
 		memcpy(title,header.Title,12)
 		printf(ex"GBA ROM INFO:\n Title: %s\n GameCode  : %s\n MakerCode : %c%c\n Version   : 1.%d\n UnitCode  : %02X (dev:%02X)\n",
 			title,
@@ -85,6 +85,12 @@ Sub main()
 		Select Case cmd
 			Case 1
 				'DumpRom
+				For i = 0 To Len(title)
+					if title[i] = GetByte("/") Then _
+					title[i] = GetByte("_")
+					if title[i] = GetByte(":") Then _
+					title[i] = GetByte("_")
+				Next i
 				DumpRom(fe, MakeStr(title)+".gba",romSize)
 			Case 2
 				RomViewer(fe)
